@@ -1,0 +1,16 @@
+{
+  "name": "ai-recruiter",
+  "version": "2.0.0",
+  "description": "AI-powered Candidate Ranking System — Desktop App",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "keywords": ["ai", "recruiter", "ranking", "ml"],
+  "author": "ankstormAndBoltz",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^31.0.0"
+  }
+}

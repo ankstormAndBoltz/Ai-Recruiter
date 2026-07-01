@@ -1,0 +1,357 @@
+# =============================================================================
+# jd_requirements.yaml
+# =============================================================================
+# Structured encoding of the Redrob "Senior AI Engineer — Founding Team" JD.
+# This file is the SINGLE SOURCE OF TRUTH for JD understanding — nothing
+# downstream re-derives requirements from prose.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# HARD DISQUALIFIERS
+# Any ONE of these firing = candidate is excluded from the top 100.
+# Each has an id (referenced in code), a human-readable description, and
+# the logic that determines whether it fires.
+# -----------------------------------------------------------------------------
+hard_disqualifiers:
+  - id: pure_research_only
+    description: >
+      Career spent entirely in pure research environments (academic labs,
+      research-only roles) with zero production deployment.
+    logic: >
+      All career_history entries have titles/descriptions indicating
+      research-only work AND no evidence of production deployment in any
+      role description.
+
+  - id: recent_langchain_only
+    description: >
+      "AI experience" consists primarily of recent (<12 months) projects
+      using LangChain/OpenAI wrappers, without substantial pre-LLM-era
+      ML production experience.
+    logic: >
+      AI-related skills all have duration_months < 12 AND career_history
+      shows no ML/AI role descriptions predating 2022.
+
+  - id: no_recent_production_code
+    description: >
+      Senior engineer who hasn't written production code in the last
+      18+ months — moved into pure architecture/tech-lead/management.
+    logic: >
+      Current role (is_current=true) title/description is purely
+      management/architecture AND duration_months >= 18 AND no
+      code-related keywords in description.
+
+  - id: title_chaser
+    description: >
+      Career pattern of switching companies every ~1.5 years chasing
+      titles (Senior → Staff → Principal).
+    logic: >
+      3+ career_history entries AND median tenure < 18 months AND
+      progressive title inflation visible in history.
+
+  - id: consulting_only
+    description: >
+      Entire career at consulting firms (TCS, Infosys, Wipro, Accenture,
+      Cognizant, Capgemini, HCL, Tech Mahindra, LTIMindtree, Mphasis)
+      without prior product-company experience.
+    logic: >
+      All career_history company names match the consulting-firm list AND
+      no entry at a product company.
+    consulting_firms:
+      - TCS
+      - Infosys
+      - Wipro
+      - Accenture
+      - Cognizant
+      - Capgemini
+      - HCL
+      - Tech Mahindra
+      - LTIMindtree
+      - Mphasis
+      - Deloitte
+      - KPMG
+      - EY
+      - PwC
+
+  - id: cv_speech_robotics_only
+    description: >
+      Primary expertise is computer vision, speech, or robotics without
+      significant NLP/IR (information retrieval) exposure.
+    logic: >
+      Skills and career_history descriptions indicate CV/speech/robotics
+      focus AND no evidence of NLP, search, retrieval, ranking, or
+      recommendation work.
+    cv_speech_keywords:
+      - computer vision
+      - image classification
+      - object detection
+      - image segmentation
+      - speech recognition
+      - speech synthesis
+      - TTS
+      - ASR
+      - robotics
+      - SLAM
+      - ROS
+    nlp_ir_keywords:
+      - NLP
+      - natural language processing
+      - information retrieval
+      - search
+      - ranking
+      - recommendation
+      - embeddings
+      - retrieval
+      - text mining
+      - sentiment analysis
+      - named entity
+      - question answering
+      - RAG
+      - vector search
+
+  - id: closed_source_only
+    description: >
+      5+ years entirely on closed-source proprietary systems with zero
+      external validation (no papers, talks, open-source, GitHub activity).
+    logic: >
+      years_of_experience >= 5 AND github_activity_score <= 0 AND
+      no certifications AND no evidence of external work in descriptions.
+
+# -----------------------------------------------------------------------------
+# MUST-HAVES
+# Candidates need ALL of these to score well. Each missed must-have is a
+# significant score penalty. Evidence text is extracted for reasoning.
+# -----------------------------------------------------------------------------
+must_haves:
+  - id: production_embeddings_retrieval
+    description: >
+      Production experience with embeddings-based retrieval systems
+      (sentence-transformers, OpenAI embeddings, BGE, E5, or similar)
+      deployed to real users.
+    keywords:
+      - embeddings
+      - sentence-transformers
+      - sentence transformers
+      - BGE
+      - E5
+      - embedding-based retrieval
+      - dense retrieval
+      - semantic search
+      - vector search
+      - FAISS
+      - Pinecone
+      - Weaviate
+      - Qdrant
+      - Milvus
+      - Annoy
+      - ScaNN
+    skill_names:
+      - Embeddings
+      - Sentence Transformers
+      - FAISS
+      - Pinecone
+      - Weaviate
+      - Qdrant
+      - Milvus
+      - Information Retrieval
+      - Semantic Search
+
+  - id: production_vector_db_hybrid_search
+    description: >
+      Production experience with vector databases or hybrid search
+      infrastructure.
+    keywords:
+      - vector database
+      - vector DB
+      - hybrid search
+      - Pinecone
+      - Weaviate
+      - Qdrant
+      - Milvus
+      - OpenSearch
+      - Elasticsearch
+      - FAISS
+      - BM25
+      - hybrid retrieval
+    skill_names:
+      - Pinecone
+      - Weaviate
+      - Qdrant
+      - Milvus
+      - Elasticsearch
+      - OpenSearch
+      - FAISS
+
+  - id: strong_python
+    description: >
+      Strong Python skills — production-quality code, not just scripting.
+    keywords:
+      - Python
+      - FastAPI
+      - Flask
+      - Django
+      - pytest
+      - asyncio
+    skill_names:
+      - Python
+      - FastAPI
+      - Flask
+      - Django
+
+  - id: ranking_evaluation_frameworks
+    description: >
+      Hands-on experience designing evaluation frameworks for ranking
+      systems — NDCG, MRR, MAP, offline-to-online correlation,
+      A/B test interpretation.
+    keywords:
+      - NDCG
+      - MRR
+      - MAP
+      - precision at k
+      - recall at k
+      - A/B test
+      - ranking evaluation
+      - offline evaluation
+      - online evaluation
+      - click-through rate
+      - engagement metric
+      - relevance
+    skill_names:
+      - A/B Testing
+      - Ranking
+      - Information Retrieval
+
+# -----------------------------------------------------------------------------
+# NICE-TO-HAVES
+# Each match adds a small bonus. Not required.
+# -----------------------------------------------------------------------------
+nice_to_haves:
+  - id: llm_finetuning
+    description: "LLM fine-tuning experience (LoRA, QLoRA, PEFT)."
+    keywords:
+      - LoRA
+      - QLoRA
+      - PEFT
+      - fine-tuning
+      - fine-tune
+      - instruction tuning
+      - RLHF
+      - DPO
+    skill_names:
+      - LoRA
+      - QLoRA
+      - Fine-tuning LLMs
+      - PEFT
+
+  - id: learning_to_rank
+    description: "Experience with learning-to-rank models."
+    keywords:
+      - learning to rank
+      - learning-to-rank
+      - LTR
+      - XGBoost
+      - LightGBM
+      - LambdaMART
+      - RankNet
+      - ListNet
+    skill_names:
+      - XGBoost
+      - LightGBM
+      - Learning to Rank
+
+  - id: hr_tech_exposure
+    description: "Prior exposure to HR-tech, recruiting tech, or marketplace products."
+    keywords:
+      - HR tech
+      - recruiting
+      - talent
+      - applicant tracking
+      - ATS
+      - marketplace
+      - job matching
+      - candidate matching
+    skill_names: []
+
+  - id: distributed_systems
+    description: "Background in distributed systems or large-scale inference optimization."
+    keywords:
+      - distributed systems
+      - inference optimization
+      - model serving
+      - TensorRT
+      - ONNX
+      - Triton
+      - vLLM
+      - Ray
+      - Dask
+      - Spark
+    skill_names:
+      - Distributed Systems
+      - Kubernetes
+      - Ray
+      - Apache Spark
+
+  - id: oss_contributions
+    description: "Open-source contributions in the AI/ML space."
+    keywords:
+      - open source
+      - open-source
+      - OSS
+      - contributor
+      - maintainer
+      - GitHub
+    # Supplemented by github_activity_score > 50
+
+# -----------------------------------------------------------------------------
+# IDEAL PROFILE NARRATIVE
+# Used for embedding-similarity scoring against candidate narratives.
+# This is a paragraph version of the JD's "how to read between the lines."
+# -----------------------------------------------------------------------------
+ideal_profile_narrative: >
+  A machine learning engineer with 6-8 years of total experience, of which
+  4-5 are in applied ML/AI roles at product companies, not pure services or
+  consulting. Has shipped at least one end-to-end ranking, search, or
+  recommendation system to real users at meaningful scale. Has strong opinions
+  about retrieval (hybrid vs dense), evaluation (offline vs online), and LLM
+  integration (when to fine-tune vs prompt) — and can defend them with
+  reference to systems they actually built. Comfortable with embeddings,
+  vector databases, hybrid search, and modern NLP. Experienced with ranking
+  evaluation frameworks like NDCG, MRR, MAP, and A/B testing. Tilts toward
+  shipping over researching. Located in or willing to relocate to Noida or
+  Pune, India. Active on the Redrob platform with strong engagement signals.
+  Has worked at product-focused companies like startups or mid-stage tech
+  companies, not just large consulting firms.
+
+# -----------------------------------------------------------------------------
+# LOGISTICS
+# Location, notice period, and visa/relocation constraints.
+# -----------------------------------------------------------------------------
+logistics:
+  preferred_locations:
+    - Noida
+    - Pune
+  acceptable_locations:
+    - Hyderabad
+    - Mumbai
+    - Delhi NCR
+    - Gurgaon
+    - Bangalore
+    - Bengaluru
+    - Delhi
+    - New Delhi
+  preferred_countries:
+    - India
+  visa_sponsorship: false
+  notice_period:
+    ideal_max_days: 30       # Sub-30 day notice is ideal
+    buyout_max_days: 30      # Company can buy out up to 30 days
+    acceptable_max_days: 90  # 30+ still in scope but higher bar
+    hard_max_days: 180       # Schema max
+  preferred_work_modes:
+    - hybrid
+    - flexible
+    - onsite
+  experience_range:
+    min_years: 4
+    ideal_min_years: 5
+    ideal_max_years: 9
+    max_years: 15  # Outside band but considered if signals strong

@@ -1,0 +1,21 @@
+# Core API framework
+fastapi>=0.100.0
+uvicorn>=0.23.0
+python-multipart>=0.0.9  # Required for file uploads (UploadFile / Form)
+
+# Data validation (Pydantic v2)
+pydantic>=2.0.0
+
+# Data processing (used by ranking pipeline)
+numpy>=1.26.0
+pandas>=2.2.0
+pyarrow>=19.0.0
+
+# JD config parsing
+pyyaml>=6.0.0
+
+# AI embeddings (optional — for future embedding similarity)
+# sentence-transformers>=3.4.0
+
+# Testing
+pytest>=8.0.0

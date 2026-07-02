@@ -12,8 +12,11 @@ Sentence structure varies based on which evidence is present.
 
 from __future__ import annotations
 
+from datetime import date
+
 from app.models import Candidate
 from app.jd_matcher import MatchResult
+from app.honeypot_checks import integrity_flag
 
 
 # ---------------------------------------------------------------------------
@@ -65,7 +68,12 @@ def _get_location_text(candidate: Candidate) -> str:
 # Main reasoning generator
 # ---------------------------------------------------------------------------
 
-def reasoning(candidate: Candidate, match_result: MatchResult, rank: int) -> str:
+def reasoning(
+    candidate: Candidate,
+    match_result: MatchResult,
+    rank: int,
+    is_flagged: bool = False,
+) -> str:
     """
     Generate 1-2 sentence reasoning for a candidate's ranking.
 
@@ -73,11 +81,14 @@ def reasoning(candidate: Candidate, match_result: MatchResult, rank: int) -> str
         candidate: The parsed candidate.
         match_result: Structured match result from JDMatcher.
         rank: The candidate's assigned rank (1-100).
+        is_flagged: True if the candidate has an integrity concern (honeypot).
+            When set, the reasoning is prefixed with a visible ⚠️ concern.
 
     Returns:
         A 1-2 sentence reasoning string using only facts from the
         candidate's own record. Varies structure based on which
-        signals dominate.
+        signals dominate. Integrity concerns and low engagement are
+        surfaced explicitly (build plan Stage 4).
     """
     title = _get_role_description(candidate)
     employer = _get_top_employer(candidate)
@@ -96,25 +107,46 @@ def reasoning(candidate: Candidate, match_result: MatchResult, rank: int) -> str
 
     # Build reasoning based on rank tier and available evidence
     if rank <= 10:
-        return _top_tier_reasoning(
+        base = _top_tier_reasoning(
             title, employer, exp, notice, location, response_rate,
             matched_mh, matched_nh, loc_match, candidate,
         )
     elif rank <= 30:
-        return _mid_tier_reasoning(
+        base = _mid_tier_reasoning(
             title, employer, exp, notice, location, response_rate,
             matched_mh, matched_nh, unmatched_mh, loc_match, candidate,
         )
     elif rank <= 60:
-        return _lower_mid_reasoning(
+        base = _lower_mid_reasoning(
             title, employer, exp, notice, location, response_rate,
             matched_mh, unmatched_mh, loc_match, candidate,
         )
     else:
-        return _tail_reasoning(
+        base = _tail_reasoning(
             title, employer, exp, notice, location, response_rate,
             matched_mh, unmatched_mh, loc_match, candidate,
         )
+
+    # --- Surface integrity concern (prefix) and low engagement (suffix) ---
+    prefix = ""
+    if is_flagged:
+        label = integrity_flag(candidate) or "consistency violation"
+        prefix = f"⚠️ Profile integrity concern: {label}. "
+
+    suffix = ""
+    sig = candidate.redrob_signals
+    days_inactive = (date(2026, 6, 1) - sig.last_active_date).days
+    if response_rate < 0.1 and days_inactive > 120:
+        suffix = (
+            f" ⚠️ Not active recently (last login {days_inactive}d ago; "
+            f"response rate {response_rate:.0%})."
+        )
+
+    result = f"{prefix}{base}{suffix}".strip()
+    # Keep reasoning well under the 200-char CSV budget.
+    if len(result) > 200:
+        result = result[:197].rstrip() + "..."
+    return result
 
 
 # ---------------------------------------------------------------------------

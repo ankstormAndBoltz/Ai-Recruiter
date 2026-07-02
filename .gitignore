@@ -2,3 +2,7 @@ node_modules/
 venv/
 __pycache__/
 .env
+
+# Electron build output — distributables are large binaries.
+# Build locally with `npm run dist:portable`, share via GitHub Releases.
+electron-app/dist/

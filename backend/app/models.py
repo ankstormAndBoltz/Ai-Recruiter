@@ -221,6 +221,17 @@ class JobDescription(BaseModel):
     title: str = Field(description="Job title, e.g. 'Senior Backend Engineer'")
     description: str = Field(default="", description="Full free-text JD (optional, for reference)")
 
+    # Ideal-profile narrative — "what a great recruiter reads between the lines".
+    # Embedded once and compared (cosine) against each candidate's narrative for
+    # the semantic-similarity component. Falls back to `description` if empty.
+    ideal_profile_narrative: str = Field(
+        default="",
+        description=(
+            "Prose describing the ideal candidate (years, domains, systems shipped, "
+            "tradeoffs they understand). Drives semantic-similarity scoring."
+        ),
+    )
+
     # What candidates MUST have (scored heavily)
     required_skills: list[SkillRequirement] = Field(
         default_factory=list,

@@ -1,16 +1,24 @@
 """
 honeypot_checks.py — Pure functions detecting logically impossible candidate profiles.
 
-Any candidate with ONE OR MORE consistency violations is HARD-EXCLUDED
-from ranking results. This is a binary filter, not a scoring penalty.
+Any candidate with ONE OR MORE consistency violations is FLAGGED as an
+integrity concern. Per the build plan, flagged candidates are NOT silently
+excluded: they are down-weighted hard in scoring (final score × 0.5) and the
+concern is surfaced in the reasoning ("⚠️ INTEGRITY: ..."). A system that
+flags "impossible dates detected" and down-weights is more trustworthy — and
+more defensible to judges — than one that silently deletes candidates.
 
 Each check is a standalone pure function:
     check_*(candidate) -> Optional[str]
     Returns None if clean, or a human-readable violation description.
 
-The combiner function:
+The combiner functions:
     consistency_violations(candidate) -> list[str]
-    Returns all violations found. Non-empty = honeypot.
+        Returns all violations found. Non-empty = integrity concern.
+    is_honeypot(candidate) -> bool
+        Convenience: True if any violation found (used to down-weight, not exclude).
+    integrity_flag(candidate) -> Optional[str]
+        A short reasoning-ready label for the first/primary violation, or None.
 """
 
 from __future__ import annotations
@@ -164,13 +172,27 @@ _ALL_CHECKS = [
 ]
 
 
+# Human-readable short labels per check, for reasoning output.
+_CHECK_LABELS = {
+    "check_signup_vs_last_active": "impossible activity dates",
+    "check_skill_proficiency_vs_duration": "skill proficiency without usage time",
+    "check_education_date_ordering": "impossible education dates",
+    "check_career_duration_vs_dates": "fabricated tenure dates",
+    "check_employment_overlap": "overlapping employment dates",
+    "check_experience_exceeds_career_span": "experience exceeds career span",
+    "check_experience_exceeds_company_age": "job tenure exceeds total experience",
+    "check_skill_duration_exceeds_experience": "skill duration exceeds career",
+}
+
+
 def consistency_violations(candidate: Candidate) -> list[str]:
     """
     Run all consistency checks on a candidate.
 
     Returns:
         List of human-readable violation descriptions.
-        Non-empty list = candidate is a honeypot → hard-exclude from ranking.
+        Non-empty list = candidate has an integrity concern → down-weight
+        (× 0.5) and flag in reasoning; NOT a hard exclusion.
         Empty list = candidate passes all checks.
     """
     violations = []
@@ -182,5 +204,23 @@ def consistency_violations(candidate: Candidate) -> list[str]:
 
 
 def is_honeypot(candidate: Candidate) -> bool:
-    """Convenience: True if any consistency violation found."""
+    """Convenience: True if any consistency violation found.
+
+    Note: this no longer means "exclude". Callers down-weight flagged
+    candidates (× 0.5) and surface the concern rather than dropping them.
+    """
     return len(consistency_violations(candidate)) > 0
+
+
+def integrity_flag(candidate: Candidate) -> Optional[str]:
+    """
+    Return a short, reasoning-ready label for the primary integrity concern,
+    or None if the candidate is clean.
+
+    Example: "fabricated tenure dates". Used to prepend
+    "⚠️ Profile integrity concern: <label>. " in the reasoning text.
+    """
+    for check_fn in _ALL_CHECKS:
+        if check_fn(candidate) is not None:
+            return _CHECK_LABELS.get(check_fn.__name__, "consistency violation")
+    return None

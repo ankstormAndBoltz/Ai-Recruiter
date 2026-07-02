@@ -3,23 +3,47 @@
  *
  * What this does:
  * 1. Shows a branded splash screen while the Python backend starts
- * 2. Spawns `python -m uvicorn app.main:app` from the backend folder
+ * 2. Spawns the Python backend (bundled venv when packaged, system Python
+ *    in dev) running `-m uvicorn app.main:app` from the backend folder
  * 3. Polls /health until the server is ready
  * 4. Opens the frontend in a full BrowserWindow
  * 5. Kills the backend process cleanly when the app closes
+ *
+ * Works both in dev (`npm start`, files live next to this folder) and
+ * packaged (`electron-builder` output, backend/frontend copied under
+ * process.resourcesPath via `extraResources`).
  */
 
 const { app, BrowserWindow, shell, dialog } = require('electron');
 const { spawn }  = require('child_process');
+const fs         = require('fs');
 const path       = require('path');
 const http       = require('http');
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
-const ROOT_DIR     = path.join(__dirname, '..');
-const BACKEND_DIR  = path.join(ROOT_DIR, 'backend');
-const FRONTEND_FILE = path.join(ROOT_DIR, 'frontend', 'index.html');
-const BACKEND_PORT = 8000;
-const BACKEND_URL  = `http://localhost:${BACKEND_PORT}`;
+// In a packaged app, extraResources land in `process.resourcesPath`.
+// In dev, everything lives one level up from this file.
+const IS_PACKAGED = app.isPackaged;
+const RESOURCES_DIR = IS_PACKAGED ? process.resourcesPath : path.join(__dirname, '..');
+
+const BACKEND_DIR   = path.join(RESOURCES_DIR, 'backend');
+const FRONTEND_FILE = path.join(RESOURCES_DIR, 'frontend', 'index.html');
+const BACKEND_PORT  = 8000;
+const BACKEND_URL   = `http://localhost:${BACKEND_PORT}`;
+
+// Prefer the bundled venv's Python (fully offline, no system install needed);
+// fall back to whatever `python`/`python3` is on PATH for dev machines that
+// haven't created a venv yet.
+function resolvePythonCommand() {
+  const venvPython = process.platform === 'win32'
+    ? path.join(BACKEND_DIR, 'venv', 'Scripts', 'python.exe')
+    : path.join(BACKEND_DIR, 'venv', 'bin', 'python3');
+
+  if (fs.existsSync(venvPython)) {
+    return venvPython;
+  }
+  return process.platform === 'win32' ? 'python' : 'python3';
+}
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let mainWindow    = null;
@@ -114,8 +138,8 @@ function startBackend() {
   return new Promise((resolve, reject) => {
     console.log('[backend] Starting from:', BACKEND_DIR);
 
-    // Try 'python' first (Windows), fallback to 'python3'
-    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+    const pythonCmd = resolvePythonCommand();
+    console.log('[backend] Using Python:', pythonCmd);
 
     backendProcess = spawn(
       pythonCmd,
@@ -131,7 +155,9 @@ function startBackend() {
 
     backendProcess.on('error', err => {
       reject(new Error(
-        `Could not start Python.\n\nMake sure Python is installed and on your PATH.\n\nError: ${err.message}`
+        `Could not start the Python backend (${pythonCmd}).\n\n` +
+        `Make sure Python is installed and on your PATH, and that ` +
+        `backend dependencies are installed (pip install -r backend/requirements.txt).\n\nError: ${err.message}`
       ));
     });
 
@@ -179,6 +205,9 @@ function killBackend() {
 
 // ─── Windows ──────────────────────────────────────────────────────────────────
 
+const APP_ICON_PATH = path.join(__dirname, 'build', 'icon.ico');
+const APP_ICON = fs.existsSync(APP_ICON_PATH) ? APP_ICON_PATH : undefined;
+
 function createSplash() {
   splashWindow = new BrowserWindow({
     width: 440,
@@ -189,6 +218,7 @@ function createSplash() {
     resizable: false,
     skipTaskbar: true,
     backgroundColor: '#07071a',
+    icon: APP_ICON,
     webPreferences: { nodeIntegration: false },
   });
   splashWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(SPLASH_HTML));
@@ -203,6 +233,7 @@ function createMain() {
     minHeight: 600,
     backgroundColor: '#07071a',
     title: 'AI Recruiter — Candidate Ranking System',
+    icon: APP_ICON,
     show: false,
     webPreferences: {
       nodeIntegration: false,

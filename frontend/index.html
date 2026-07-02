@@ -7,6 +7,7 @@
   <meta name="description" content="AI-powered candidate ranking system. Paste any job description and instantly rank candidates by fit score with reasoning." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
   <style>
     /* ===== RESET & BASE ===== */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1120,7 +1121,8 @@
       <div class="card-header">
         <div class="card-icon icon-green">🏆</div>
         <h2>Ranked Results</h2>
-        <span class="card-sub" id="resultsCardSub">Waiting for input</span>
+        <button id="exportBtn" class="btn-sm" style="display: none; margin-left: auto; margin-right: 15px; width: auto; padding: 4px 10px; font-size: 0.75rem;" onclick="exportToExcel()">📥 Download XLSX</button>
+        <span class="card-sub" id="resultsCardSub" style="margin-left: 0;">Waiting for input</span>
       </div>
 
       <!-- Spinner -->
@@ -1715,8 +1717,17 @@ async function rankCandidates() {
 // ============================================================
 // RENDER RESULTS
 // ============================================================
+let currentResults = [];
+
 function renderResults(data, jd) {
   setLoading(false);
+
+  currentResults = data.results || [];
+  if (currentResults.length > 0) {
+    document.getElementById('exportBtn').style.display = 'block';
+  } else {
+    document.getElementById('exportBtn').style.display = 'none';
+  }
 
   // Stats
   document.getElementById('statProcessed').textContent = data.total_processed;
@@ -1825,6 +1836,24 @@ function showError(msg) {
 
 function hideError() {
   document.getElementById('errorBanner').classList.remove('active');
+}
+
+function exportToExcel() {
+  if (!currentResults || currentResults.length === 0) return;
+  
+  const rows = currentResults.map(r => ({
+    Rank: r.rank,
+    'Candidate ID': r.candidate_id,
+    Score: Math.round(r.score * 100) + '%',
+    'Must-Haves Matched': r.must_have_count,
+    Reasoning: r.reasoning
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Ranked Candidates");
+  
+  XLSX.writeFile(workbook, "recommended_candidates.xlsx");
 }
 </script>
 </body>

@@ -83,12 +83,15 @@ def rank(request: RankRequest):
     - `preferred_locations` + `acceptable_locations` → logistics multiplier
     - `preferred_work_modes` + `max_notice_days` → logistics multiplier
 
-    Pipeline per candidate:
-    1. Honeypot consistency check → hard-exclude fabricated profiles
-    2. JD matching → must-haves, nice-to-haves, disqualifiers, logistics
-    3. Behavioral signal scoring → availability multiplier [0.3-1.3]
-    4. Final score computation (6 components × 2 multipliers)
-    5. Deterministic sort → reasoning generation
+    Pipeline per candidate (build plan Stages 2–4):
+    1. Honeypot consistency check → FLAG + down-weight (× 0.5), not excluded
+    2. JD matching → depth-weighted must-haves (proficiency × duration ×
+       assessment), JD-specific career fit, logistics
+    3. Behavioral signal scoring → availability multiplier [0.65-1.15]
+    4. Real semantic similarity (candidate narrative vs JD ideal narrative)
+    5. Hybrid final score = 0.25·semantic + 0.40·coverage + 0.20·career_fit
+       + 0.15·behavioral, then logistics multiplier
+    6. Deterministic sort → evidence-cited reasoning generation
 
     Returns the top `top_k` candidates with scores and reasoning.
     """
@@ -223,6 +226,15 @@ def get_example_jd():
     return JobDescription(
         title="Senior ML Engineer — Search & Ranking",
         description="Looking for a senior ML engineer to build production search and ranking systems.",
+        ideal_profile_narrative=(
+            "A machine learning engineer with 6-8 years total, 4-5 in applied ML/AI at "
+            "product companies (not consulting). Has shipped an end-to-end ranking, search, "
+            "or recommendation system to real users at scale. Strong opinions on retrieval "
+            "(hybrid vs dense), evaluation (offline vs online), and when to fine-tune vs "
+            "prompt — defensible from systems they actually built. Comfortable with "
+            "embeddings, vector databases, hybrid search, and ranking evaluation (NDCG, MRR, "
+            "MAP, A/B testing). Tilts toward shipping over researching."
+        ),
         required_skills=[
             {"name": "Python", "keywords": ["python", "fastapi", "flask", "django", "asyncio"]},
             {"name": "Embeddings & Retrieval", "keywords": ["embeddings", "faiss", "vector search", "semantic search", "sentence-transformers"]},

@@ -1,14 +1,16 @@
 """
 signal_scoring.py — Availability multiplier from the 23 redrob_signals fields.
 
-Produces a single float multiplier in the range [0.3, 1.3] that adjusts
+Produces a single float multiplier in the range [0.65, 1.15] that adjusts
 the skill-fit score based on behavioral/engagement signals.
 
 Design decisions:
   - The multiplier is MULTIPLICATIVE, applied to the skill-match score.
-  - Range [0.3, 1.3] ensures strong profiles with poor engagement are
-    modestly penalized (not zeroed out), and thin profiles with perfect
-    engagement get a small boost (not enough to beat a strong match).
+  - Range [0.65, 1.15] treats engagement as a FLAG, not a disqualifier.
+    The JD's ideal candidate is a "shipping senior" who may be passive
+    (low recruiter engagement). A wide [0.3, 1.3] range would crater a
+    strong-fit passive candidate; [0.65, 1.15] down-weights disengagement
+    by at most ~35% without erasing a strong match.
   - Sentinel values (-1) for github_activity_score and offer_acceptance_rate
     are explicitly handled as neutral (contribute 0 to the sub-score).
   - Each signal is normalized to [0, 1] then weighted.
@@ -45,9 +47,9 @@ _TOTAL_WEIGHT = (
 )
 assert abs(_TOTAL_WEIGHT - 1.0) < 1e-6, f"Signal weights must sum to 1.0, got {_TOTAL_WEIGHT}"
 
-# Multiplier output range
-MULTIPLIER_MIN = 0.3
-MULTIPLIER_MAX = 1.3
+# Multiplier output range — narrowed so engagement is a flag, not a life sentence
+MULTIPLIER_MIN = 0.65
+MULTIPLIER_MAX = 1.15
 
 # Reference date for recency calculations
 REFERENCE_DATE = date(2026, 6, 1)
@@ -133,7 +135,7 @@ def availability_multiplier(signals: RedrobSignals) -> float:
     Compute a multiplicative availability/engagement factor from behavioral signals.
 
     Returns:
-        Float in [MULTIPLIER_MIN, MULTIPLIER_MAX] (currently [0.3, 1.3]).
+        Float in [MULTIPLIER_MIN, MULTIPLIER_MAX] (currently [0.65, 1.15]).
 
     The multiplier adjusts the skill-fit score. A value of 1.0 means neutral.
     """

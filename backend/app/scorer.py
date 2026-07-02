@@ -1,14 +1,18 @@
 """
 scorer.py — Combines all signals into a final ranking score.
 
-Components:
-  1. Structured requirement match score (must-haves + disqualifiers)
-  2. Embedding similarity to ideal profile narrative
-  3. Nice-to-have bonus
-  4. Availability multiplier (from signal_scoring.py)
-  5. Logistics fit multiplier
+Implements the build plan's hybrid scoring formula (Stage 3):
 
-Hard-exclude: honeypots and disqualified candidates get score = 0.0.
+    base = w1*semantic + w2*must_have_coverage + w3*career_fit + w4*behavioral
+         =  0.25*sem   + 0.40*coverage         + 0.20*fit      + 0.15*behavioral
+
+Then a logistics multiplier and a honeypot penalty are applied:
+  - Honeypots are NO LONGER hard-excluded. Instead base *= 0.5 and the concern
+    is surfaced in reasoning. This makes the auditing visible and lets a
+    strong-but-flagged profile still be seen rather than silently deleted.
+  - Behavioral engagement is folded in as a weighted component (see w4) using
+    the narrowed [0.65, 1.15] multiplier, so passive strong-fit seniors are
+    flagged, not cratered.
 
 All weights are named constants at the top — easy to defend and tune.
 """
@@ -20,39 +24,22 @@ from app.models import JobDescription
 
 
 # ---------------------------------------------------------------------------
-# Scoring weights — named constants, not inline magic numbers
+# Scoring weights — build plan hybrid formula (sum to 1.0)
 # ---------------------------------------------------------------------------
 
-# Must-have match: each matched must-have contributes this fraction of the total
-# There are 4 must-haves; matching all 4 = full score (1.0)
-WEIGHT_MUST_HAVE_TOTAL = 0.45
-MUST_HAVE_COUNT = 4
-WEIGHT_PER_MUST_HAVE = WEIGHT_MUST_HAVE_TOTAL / MUST_HAVE_COUNT  # 0.1125 each
+WEIGHT_SEMANTIC = 0.25            # Cosine similarity to JD ideal-profile narrative
+WEIGHT_MUST_HAVE_COVERAGE = 0.40  # Depth-weighted must-have coverage (prof×dur×assess)
+WEIGHT_CAREER_FIT = 0.20          # JD-specific career-fit (disqualifier bypasses)
+WEIGHT_BEHAVIORAL = 0.15          # Behavioral/engagement signal
 
-# Embedding similarity to ideal profile narrative
-WEIGHT_EMBEDDING_SIMILARITY = 0.30
-
-# Nice-to-have bonus (5 possible nice-to-haves)
-WEIGHT_NICE_TO_HAVE_TOTAL = 0.10
-NICE_TO_HAVE_COUNT = 5
-WEIGHT_PER_NICE_TO_HAVE = WEIGHT_NICE_TO_HAVE_TOTAL / NICE_TO_HAVE_COUNT  # 0.02 each
-
-# Experience fit bonus — being in the ideal experience range
-WEIGHT_EXPERIENCE_FIT = 0.05
-
-# Education tier bonus
-WEIGHT_EDUCATION = 0.05
-
-# Career depth (product companies, diverse roles)
-WEIGHT_CAREER_DEPTH = 0.05
-
-# Total base weights should sum to 1.0
 _BASE_TOTAL = (
-    WEIGHT_MUST_HAVE_TOTAL + WEIGHT_EMBEDDING_SIMILARITY +
-    WEIGHT_NICE_TO_HAVE_TOTAL + WEIGHT_EXPERIENCE_FIT +
-    WEIGHT_EDUCATION + WEIGHT_CAREER_DEPTH
+    WEIGHT_SEMANTIC + WEIGHT_MUST_HAVE_COVERAGE +
+    WEIGHT_CAREER_FIT + WEIGHT_BEHAVIORAL
 )
 assert abs(_BASE_TOTAL - 1.0) < 1e-6, f"Base weights must sum to 1.0, got {_BASE_TOTAL}"
+
+# Honeypot down-weight (not exclusion).
+HONEYPOT_PENALTY = 0.5
 
 # Logistics multiplier range
 LOGISTICS_MULTIPLIER_MIN = 0.5
@@ -140,6 +127,17 @@ def experience_fit_score(years: float, jd: JobDescription) -> float:
 # Main scoring function
 # ---------------------------------------------------------------------------
 
+def _behavioral_component(availability_mult: float) -> float:
+    """Map the narrowed availability multiplier [0.65, 1.15] onto a [0, 1]
+    component so it can enter the weighted sum. 0.65→0.0, 1.15→1.0."""
+    from app.signal_scoring import MULTIPLIER_MIN, MULTIPLIER_MAX
+
+    span = MULTIPLIER_MAX - MULTIPLIER_MIN
+    if span <= 0:
+        return 0.0
+    return max(0.0, min(1.0, (availability_mult - MULTIPLIER_MIN) / span))
+
+
 def final_score(
     match_result: MatchResult,
     embedding_similarity: float,
@@ -151,63 +149,56 @@ def final_score(
     num_product_companies: int = 0,
 ) -> float:
     """
-    Compute the final ranking score for a candidate.
+    Compute the final ranking score for a candidate using the hybrid formula.
 
     Args:
-        match_result: Structured output from JDMatcher.match()
-        embedding_similarity: Cosine similarity to ideal profile narrative (0-1)
+        match_result: Structured output from JDMatcher.match() — provides
+            depth-weighted must_have_coverage and career_fit.
+        embedding_similarity: Cosine similarity to the JD's ideal-profile
+            narrative in [0, 1] (real, per-candidate — no longer a constant).
         availability_mult: From signal_scoring.availability_multiplier()
-        is_honeypot: From honeypot_checks.is_honeypot()
-        jd: The JobDescription — used to read experience range thresholds
-        years_of_experience: Candidate's total years of experience
-        education_tier: Best education tier (tier_1..tier_4, unknown)
-        num_product_companies: Number of non-consulting companies in career
+            (now in the narrowed [0.65, 1.15] range).
+        is_honeypot: From honeypot_checks.is_honeypot(). Down-weights (× 0.5),
+            it no longer excludes the candidate.
+        jd: The JobDescription (kept for signature/back-compat; thresholds now
+            live in career_fit).
+        years_of_experience, education_tier, num_product_companies: retained
+            for back-compat; the hybrid formula folds these into career_fit.
 
     Returns:
-        Float score. Higher = better fit.
-        0.0 for honeypots and hard-disqualified candidates.
+        Float score in [0, 1] range (before logistics). Higher = better fit.
+        Hard-disqualified candidates still return 0.0.
     """
-    # Hard exclusions — always return 0.0
-    if is_honeypot:
-        return 0.0
+    # Generic hard disqualifiers (experience floor, zero-skill) still exclude.
     if match_result.is_disqualified:
         return 0.0
 
-    # --- Component 1: Must-have matches ---
-    must_have_score = match_result.must_have_count * WEIGHT_PER_MUST_HAVE
+    # --- Component 1: Semantic similarity (real embeddings) ---
+    semantic = max(0.0, min(1.0, embedding_similarity))
 
-    # --- Component 2: Embedding similarity ---
-    # Clip to [0, 1] (cosine similarity can be slightly negative)
-    embed_score = max(0.0, min(1.0, embedding_similarity)) * WEIGHT_EMBEDDING_SIMILARITY
+    # --- Component 2: Must-have coverage (proficiency × duration × assessment) ---
+    coverage = max(0.0, min(1.0, match_result.must_have_coverage))
 
-    # --- Component 3: Nice-to-have bonus ---
-    nice_to_have_score = match_result.nice_to_have_count * WEIGHT_PER_NICE_TO_HAVE
+    # --- Component 3: Career fit (JD-specific disqualifier bypasses) ---
+    career_fit = max(0.0, min(1.0, match_result.career_fit))
 
-    # --- Component 4: Experience fit ---
-    exp_score = experience_fit_score(years_of_experience, jd) * WEIGHT_EXPERIENCE_FIT
+    # --- Component 4: Behavioral signal ---
+    behavioral = _behavioral_component(availability_mult)
 
-    # --- Component 5: Education tier ---
-    tier_scores = {
-        "tier_1": 1.0,
-        "tier_2": 0.7,
-        "tier_3": 0.4,
-        "tier_4": 0.2,
-        "unknown": 0.3,
-    }
-    edu_score = tier_scores.get(education_tier, 0.3) * WEIGHT_EDUCATION
-
-    # --- Component 6: Career depth ---
-    # More product companies = better
-    career_score = min(1.0, num_product_companies / 3.0) * WEIGHT_CAREER_DEPTH
-
-    # --- Base score (before multipliers) ---
+    # --- Hybrid base score ---
     base_score = (
-        must_have_score + embed_score + nice_to_have_score +
-        exp_score + edu_score + career_score
+        WEIGHT_SEMANTIC * semantic +
+        WEIGHT_MUST_HAVE_COVERAGE * coverage +
+        WEIGHT_CAREER_FIT * career_fit +
+        WEIGHT_BEHAVIORAL * behavioral
     )
 
-    # --- Apply multipliers ---
+    # --- Honeypot penalty (down-weight, not exclude) ---
+    if is_honeypot:
+        base_score *= HONEYPOT_PENALTY
+
+    # --- Logistics multiplier (location + notice fit) ---
     logistics_mult = logistics_fit_multiplier(match_result.logistics)
-    adjusted = base_score * availability_mult * logistics_mult
+    adjusted = base_score * logistics_mult
 
     return round(adjusted, 6)
